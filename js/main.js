@@ -14,6 +14,7 @@ function init() {
     $("#playGame_btn").click(onPlayGameBtClick);
     $("#goBack_btn").click(onGoBackBtClick);
     $("#quit_btn").click(onQuitBtClick);
+    $("#move_btn").click(onMoveBtClick);
     sfsConnect();   
 } // end of init()
 

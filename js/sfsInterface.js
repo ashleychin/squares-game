@@ -30,13 +30,13 @@ function sfsConnect() {
 // Request Wrapers
 //------------------------------------
 
-function sfsCreateAndJoinRoom(name_str, joinCallback) {
+function sfsCreateAndJoinRoom(roomName_str, joinCallback) {
     if (_joinCallback !== null) {
         sfs.removeEventListener(SFS2X.SFSEvent.ROOM_JOIN, _joinCallback);
     }
     _joinCallback= joinCallback || onRoomJoin;
      sfs.addEventListener(SFS2X.SFSEvent.ROOM_JOIN, joinCallback, this);
-    var settings = new  SFS2X.Requests.RoomSettings(name_str);
+    var settings = new  SFS2X.Requests.RoomSettings(roomName_str);
     settings.maxUsers = 2;
     sfs.send(new SFS2X.Requests.System.CreateRoomRequest(settings, true));
 } // end of sfsCreateAndJoinRoom()
@@ -51,18 +51,6 @@ function sfsJoinRoom(roomName_str, joinCallback) {
         sfs.send(new SFS2X.Requests.System.JoinRoomRequest(roomName_str));
     }
 } //end of sfsJoinRoom()
-
-function sfsJoinLobbyRoom() {
-    if (_joinCallback !== null) {
-        sfs.removeEventListener(SFS2X.SFSEvent.ROOM_JOIN, _joinCallback);
-    }
-    _joinCallback = onRoomJoin;
-    sfs.addEventListener(SFS2X.SFSEvent.ROOM_JOIN, _joinCallback , this);
-    if (sfs.lastJoinedRoom === null || sfs.lastJoinedRoom.name != LOBBY_ROOM_NAME) {
-        sfs.send(new SFS2X.Requests.System.JoinRoomRequest(LOBBY_ROOM_NAME));
-    }
-} //end of sfsJoinRoom()
-
 
 //------------------------------------
 // Default SFS EVENT HANDLERS
@@ -103,7 +91,7 @@ function onLogin(event) {
         "\n\tUser: " + event.user +
         "\n\tData: " + event.data);
     // Join lobby room
-    sfsJoinRoom(LOBBY_ROOM_NAME);
+    sfsJoinRoom(LOBBY_ROOM_NAME, null);
     // Initalise the game manager
     gameManager = new GameManager(sfs, LOBBY_ROOM_NAME, event.user);
 } // end of onLogin()

@@ -83,6 +83,12 @@ function onGoBackBtClick(event) {
     uiTrace(" Into goBackBtClick");
 } // end of onGoBackBtClick()
 
+function onMoveBtClick(event) {
+    uiTrace(" Into MoveBtClick");
+    var move_obj= { type:"Move",dummyInfo: 101};
+    gameManager.sendMove(move_obj);
+} // end of onPlayGameBtClick()
+
 function onQuitBtClick(event) {
     uiTrace(" Into QuitBtClick");
      // force the user to leave the game room
