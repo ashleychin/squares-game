@@ -1,3 +1,5 @@
+var _playerNum;
+
 var GameManager = function (sfs, lobbyName_str, me_susr) {
     "use strict";
     // Private variables and methods
@@ -68,6 +70,11 @@ var GameManager = function (sfs, lobbyName_str, me_susr) {
         // remember which room we are in
         _room = evt.room;
         _gameMaster_bool = _room.getUserCount() == 1;
+        if (_gameMaster_bool) {
+            _playerNum = 1;
+        } else {
+            _playerNum = 2;
+        }
         _self.setState(HOLDING_STATE);
     }; // end of _onJoinGameRoom()
 

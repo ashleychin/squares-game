@@ -1,4 +1,4 @@
-var _game, counter = 0;
+var _game, counter = 0, lastMove;
 var THTJB = {
     canMove: false,
     lineArray: new Array(
@@ -28,8 +28,6 @@ var THTJB = {
 function createGame() {
     _game = new Phaser.Game(450, 450, Phaser.CANVAS, "game-container", { preload: onPreload, create: onCreate});
 
-
-
 }
 
 // the game is preloading **************************
@@ -52,17 +50,16 @@ function onCreate() {
     THTJB.squareSprites = _game.add.group();
     
     // create the text for the moves footer
-    THTJB.movesText = _game.add.text(20, 400, 'Moves: 0', { font: '22px Arial', fill: '#fff' });
+    THTJB.movesText = _game.add.text(20, 400, 'Begin game', { font: '22px Arial', fill: '#fff' });
     // hide the moves and score text until needed
     THTJB.movesText.visible = false;
     startGame();
+
+    sfs.addEventListener(SFS2X.SFSEvent.OBJECT_MESSAGE, onObjectMessage, this);
 }
 
 function startGame() {
-    // remove listener
-    THTJB.movesText.text = 'Player 1: Your move';
-    // show footer text
-    THTJB.movesText.visible = true;
+
     // remove all tiles from play
     THTJB.squareSprites.removeAll(true);
     THTJB.lineSprites.removeAll(true);
@@ -73,10 +70,27 @@ function startGame() {
     for (var i=0; i<THTJB.squareArray.length; i++) {
         THTJB.squareArray[i]=0;
     }
+
     loadDots();
     loadLines();
+    
+    if (counter == 0 && _playerNum == 1) {
+        THTJB.movesText.text = 'Player ' + _playerNum + ': Your move';
+        THTJB.canMove = true;
+    } else if (counter == 0 && _playerNum == 2) {
+        THTJB.movesText.text = 'Player ' + _playerNum + ': Opponent\'s move';
+        THTJB.canMove = false;
+    }
+
+    // show footer text
+    THTJB.movesText.visible = true;
+    
     // allow player movement
-    THTJB.canMove = true;
+    if (THTJB.canMove == true) {
+        canMove();
+    } else {
+        cantMove();
+    }
 }
 
 // load the 'dot grid'
@@ -122,7 +136,7 @@ function loadLines() {
         hline.tint = THTJB.colors[value];
         hline.alpha = 0.5;
         hline.inputEnabled = true;
-        hline.events.onInputDown.add(listener, this);
+        //hline.events.onInputDown.add(listener, this);
         hline.events.onInputOver.add(over, this);
         hline.events.onInputOut.add(out, this);
     }
@@ -147,10 +161,29 @@ function loadLines() {
         vline.tint = THTJB.colors[value];
         vline.alpha = 0.5;
         vline.inputEnabled = true;
-        vline.events.onInputDown.add(listener, this);
+        //vline.events.onInputDown.add(listener, this);
         vline.events.onInputOver.add(over, this);
         vline.events.onInputOut.add(out, this);
     }
+
+}
+
+function canMove() {
+    THTJB.lineSprites.forEach(function (item) {
+        if (item.alpha != 1) {
+            item.events.onInputDown.add(listener, this);
+        }
+    })
+    THTJB.movesText.text = 'Player ' + _playerNum + ': Your move';
+    THTJB.canMove = true;
+}
+
+function cantMove() {
+    THTJB.lineSprites.forEach(function (item) {
+            item.events.onInputDown.remove(listener, this);
+    })
+    THTJB.movesText.text = 'Player ' + _playerNum + ': Opponent\'s move';
+    THTJB.canMove = false;
 }
 
 
@@ -161,641 +194,751 @@ function over (line) {
 }
 
 function out (line) {
-
-    uiTrace("Into GameManager: mouseOut");
-    line.alpha = 0.5;
+    if (THTJB.lineArray[line.pos] == 0) {
+        uiTrace("Into GameManager: mouseOut");
+        line.alpha = 0.5;
+    }
 }
 
 function listener (line) {
 
     line.events.onInputOut.remove(out, this);
+    line.events.onInputOver.remove(over, this);
+    line.events.onInputDown.remove(listener, this);
+
     counter++;
     uiTrace("Into GameManager: Click" + counter);
-    THTJB.lineArray[line.pos] = 1;
+        THTJB.lineArray[line.pos] = _playerNum;
 
     uiTrace("Into GameManager: arrayValue" + THTJB.lineArray[line.pos]);
 
     line.alpha = 1;
     line.tint = THTJB.colors[THTJB.lineArray[line.pos]];
 
+    // Send my movement to all players
+    var dataObj = {};
+    dataObj.pos = line.pos;
+    
+    sfs.send(new SFS2X.Requests.System.ObjectMessageRequest(dataObj));
+
+    lastMove = true;
+
     squareCheck(line);
 }
 
-var _click = function (pointer, event) {
-        
-        /* pointer.y sometimes reports incorrectly on 
-         * first click 
-         */
-        var xPos = event.layerX;
-        var yPos = event.layerY;
-        //console.log("click");
-        //console.log(event);
-
-        uiTrace("Into GameManager: Click" + xPos + yPos);
-
-        var move_obj = {
-            typr_str: "Click",
-            mark: _myMark,
-            xPos: xPos,
-            yPos: yPos
-        };
-        if (_map.getTileWorldXY(xPos, yPos).index === EMPTY && _isMyTurn_bool && _inPlay_bool) {
-            this.updateTile(move_obj);
-            _myGame.sendMove(move_obj);
+function onObjectMessage(evtParams)
+{
+    counter++;
+    var dataObj = evtParams.message;
+    var line;
+    
+    THTJB.lineSprites.forEach(function (item) {
+        if (item.pos == dataObj.pos) {
+            line = item;
         }
-    }; // end of _click()
+    })
+
+    counter++;
+
+    if (_playerNum == 1) {
+        THTJB.lineArray[line.pos] = 2;
+    } else {
+        THTJB.lineArray[line.pos] = 1;
+    }
+
+    uiTrace("Into GameManager: arrayValue" + THTJB.lineArray[line.pos]);
+
+    line.events.onInputOut.remove(out, this);
+    line.events.onInputOver.remove(over, this);
+    line.events.onInputDown.remove(listener, this);
+
+    line.alpha = 1;
+    line.tint = THTJB.colors[THTJB.lineArray[line.pos]];
+
+    lastMove = false;
+
+    squareCheck(line);
+    
+}
+
 
 function squareCheck(line) {
     var linePosition = line.pos;
+    var colourUpdate;
+    var squareAdded = false;
+
+    if (lastMove == true) {
+        colourUpdate = _playerNum;
+    } else if (lastMove == false && _playerNum == 1) {
+        colourUpdate = 2;
+    } else if (lastMove == false && _playerNum == 2) {
+        colourUpdate = 1;
+    }
 
     if (linePosition < 4) {
         if ((THTJB.lineArray[linePosition+4] != 0) && (THTJB.lineArray[linePosition+5] != 0) && (THTJB.lineArray[linePosition+9] != 0)) {
-            THTJB.squareArray[linePosition] = 1;
+            THTJB.squareArray[linePosition] = colourUpdate;
             var fillSquare = _game.add.sprite((linePosition*110 + 10), 10, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = linePosition;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 4) {
         if ((THTJB.lineArray[0] != 0) && (THTJB.lineArray[5] != 0) && (THTJB.lineArray[9] != 0)) {
-            THTJB.squareArray[0] = 1;
+            THTJB.squareArray[0] = colourUpdate;
             var fillSquare = _game.add.sprite(10, 10, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 0;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 5) {
         if ((THTJB.lineArray[0] != 0) && (THTJB.lineArray[4] != 0) && (THTJB.lineArray[9] != 0)) {
-            THTJB.squareArray[0] = 1;
+            THTJB.squareArray[0] = colourUpdate;
             var fillSquare = _game.add.sprite(10, 10, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 0;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
         if ((THTJB.lineArray[1] != 0) && (THTJB.lineArray[6] != 0) && (THTJB.lineArray[10] != 0)) {
-            THTJB.squareArray[1] = 1;
+            THTJB.squareArray[1] = colourUpdate;
             var fillSquare = _game.add.sprite(120, 10, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 1;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 6) {
         if ((THTJB.lineArray[1] != 0) && (THTJB.lineArray[5] != 0) && (THTJB.lineArray[10] != 0)) {
-            THTJB.squareArray[1] = 1;
+            THTJB.squareArray[1] = colourUpdate;
             var fillSquare = _game.add.sprite(120, 10, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 1;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
         if ((THTJB.lineArray[2] != 0) && (THTJB.lineArray[7] != 0) && (THTJB.lineArray[11] != 0)) {
-            THTJB.squareArray[2] = 1;
+            THTJB.squareArray[2] = colourUpdate;
             var fillSquare = _game.add.sprite(230, 10, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 2;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 7) {
         if ((THTJB.lineArray[2] != 0) && (THTJB.lineArray[6] != 0) && (THTJB.lineArray[11] != 0)) {
-            THTJB.squareArray[2] = 1;
+            THTJB.squareArray[2] = colourUpdate;
             var fillSquare = _game.add.sprite(230, 10, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 2;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
         if ((THTJB.lineArray[3] != 0) && (THTJB.lineArray[8] != 0) && (THTJB.lineArray[12] != 0)) {
-            THTJB.squareArray[3] = 1;
+            THTJB.squareArray[3] = colourUpdate;
             var fillSquare = _game.add.sprite(340, 10, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 3;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 8) {
         if ((THTJB.lineArray[3] != 0) && (THTJB.lineArray[7] != 0) && (THTJB.lineArray[12] != 0)) {
-            THTJB.squareArray[3] = 1;
+            THTJB.squareArray[3] = colourUpdate;
             var fillSquare = _game.add.sprite(340, 10, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 3;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 9) {
         if ((THTJB.lineArray[0] != 0) && (THTJB.lineArray[4] != 0) && (THTJB.lineArray[5] != 0)) {
-            THTJB.squareArray[0] = 1;
+            THTJB.squareArray[0] = colourUpdate;
             var fillSquare = _game.add.sprite(10, 10, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 0;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
         if ((THTJB.lineArray[13] != 0) && (THTJB.lineArray[14] != 0) && (THTJB.lineArray[18] != 0)) {
-            THTJB.squareArray[4] = 1;
+            THTJB.squareArray[4] = colourUpdate;
             var fillSquare = _game.add.sprite(10, 120, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 4;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 10) {
         if ((THTJB.lineArray[1] != 0) && (THTJB.lineArray[5] != 0) && (THTJB.lineArray[6] != 0)) {
-            THTJB.squareArray[1] = 1;
+            THTJB.squareArray[1] = colourUpdate;
             var fillSquare = _game.add.sprite(120, 10, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 1;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
         if ((THTJB.lineArray[14] != 0) && (THTJB.lineArray[15] != 0) && (THTJB.lineArray[19] != 0)) {
-            THTJB.squareArray[5] = 1;
+            THTJB.squareArray[5] = colourUpdate;
             var fillSquare = _game.add.sprite(120, 120, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 5;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 11) {
         if ((THTJB.lineArray[2] != 0) && (THTJB.lineArray[6] != 0) && (THTJB.lineArray[7] != 0)) {
-            THTJB.squareArray[2] = 1;
+            THTJB.squareArray[2] = colourUpdate;
             var fillSquare = _game.add.sprite(230, 10, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 2;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
         if ((THTJB.lineArray[15] != 0) && (THTJB.lineArray[16] != 0) && (THTJB.lineArray[20] != 0)) {
-            THTJB.squareArray[6] = 1;
+            THTJB.squareArray[6] = colourUpdate;
             var fillSquare = _game.add.sprite(230, 120, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 6;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 12) {
         if ((THTJB.lineArray[3] != 0) && (THTJB.lineArray[7] != 0) && (THTJB.lineArray[8] != 0)) {
-            THTJB.squareArray[3] = 1;
+            THTJB.squareArray[3] = colourUpdate;
             var fillSquare = _game.add.sprite(340, 10, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 3;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
         if ((THTJB.lineArray[16] != 0) && (THTJB.lineArray[17] != 0) && (THTJB.lineArray[21] != 0)) {
-            THTJB.squareArray[7] = 1;
+            THTJB.squareArray[7] = colourUpdate;
             var fillSquare = _game.add.sprite(340, 120, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 7;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 13) {
         if ((THTJB.lineArray[9] != 0) && (THTJB.lineArray[14] != 0) && (THTJB.lineArray[18] != 0)) {
-            THTJB.squareArray[4] = 1;
+            THTJB.squareArray[4] = colourUpdate;
             var fillSquare = _game.add.sprite(10, 120, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 4;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 14) {
         if ((THTJB.lineArray[9] != 0) && (THTJB.lineArray[13] != 0) && (THTJB.lineArray[18] != 0)) {
-            THTJB.squareArray[4] = 1;
+            THTJB.squareArray[4] = colourUpdate;
             var fillSquare = _game.add.sprite(10, 120, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 4;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
         if ((THTJB.lineArray[10] != 0) && (THTJB.lineArray[15] != 0) && (THTJB.lineArray[19] != 0)) {
-            THTJB.squareArray[5] = 1;
+            THTJB.squareArray[5] = colourUpdate;
             var fillSquare = _game.add.sprite(120, 120, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 5;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 15) {
         if ((THTJB.lineArray[10] != 0) && (THTJB.lineArray[14] != 0) && (THTJB.lineArray[19] != 0)) {
-            THTJB.squareArray[5] = 1;
+            THTJB.squareArray[5] = colourUpdate;
             var fillSquare = _game.add.sprite(120, 120, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 5;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
         if ((THTJB.lineArray[11] != 0) && (THTJB.lineArray[16] != 0) && (THTJB.lineArray[20] != 0)) {
-            THTJB.squareArray[6] = 1;
+            THTJB.squareArray[6] = colourUpdate;
             var fillSquare = _game.add.sprite(230, 120, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 6;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 16) {
         if ((THTJB.lineArray[11] != 0) && (THTJB.lineArray[15] != 0) && (THTJB.lineArray[20] != 0)) {
-            THTJB.squareArray[6] = 1;
+            THTJB.squareArray[6] = colourUpdate;
             var fillSquare = _game.add.sprite(230, 120, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 6;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
         if ((THTJB.lineArray[12] != 0) && (THTJB.lineArray[17] != 0) && (THTJB.lineArray[21] != 0)) {
-            THTJB.squareArray[7] = 1;
+            THTJB.squareArray[7] = colourUpdate;
             var fillSquare = _game.add.sprite(340, 120, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 7;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 17) {
         if ((THTJB.lineArray[12] != 0) && (THTJB.lineArray[16] != 0) && (THTJB.lineArray[21] != 0)) {
-            THTJB.squareArray[7] = 1;
+            THTJB.squareArray[7] = colourUpdate;
             var fillSquare = _game.add.sprite(340, 120, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 7;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 18) {
         if ((THTJB.lineArray[9] != 0) && (THTJB.lineArray[13] != 0) && (THTJB.lineArray[14] != 0)) {
-            THTJB.squareArray[4] = 1;
+            THTJB.squareArray[4] = colourUpdate;
             var fillSquare = _game.add.sprite(10, 120, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 4;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
         if ((THTJB.lineArray[22] != 0) && (THTJB.lineArray[23] != 0) && (THTJB.lineArray[27] != 0)) {
-            THTJB.squareArray[8] = 1;
+            THTJB.squareArray[8] = colourUpdate;
             var fillSquare = _game.add.sprite(10, 230, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 8;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 19) {
         if ((THTJB.lineArray[10] != 0) && (THTJB.lineArray[14] != 0) && (THTJB.lineArray[15] != 0)) {
-            THTJB.squareArray[5] = 1;
+            THTJB.squareArray[5] = colourUpdate;
             var fillSquare = _game.add.sprite(120, 120, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 5;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
         if ((THTJB.lineArray[23] != 0) && (THTJB.lineArray[24] != 0) && (THTJB.lineArray[28] != 0)) {
-            THTJB.squareArray[9] = 1;
+            THTJB.squareArray[9] = colourUpdate;
             var fillSquare = _game.add.sprite(120, 230, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 9;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 20) {
         if ((THTJB.lineArray[11] != 0) && (THTJB.lineArray[15] != 0) && (THTJB.lineArray[16] != 0)) {
-            THTJB.squareArray[6] = 1;
+            THTJB.squareArray[6] = colourUpdate;
             var fillSquare = _game.add.sprite(230, 120, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 6;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
         if ((THTJB.lineArray[24] != 0) && (THTJB.lineArray[25] != 0) && (THTJB.lineArray[29] != 0)) {
-            THTJB.squareArray[10] = 1;
+            THTJB.squareArray[10] = colourUpdate;
             var fillSquare = _game.add.sprite(230, 230, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 10;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 21) {
         if ((THTJB.lineArray[12] != 0) && (THTJB.lineArray[16] != 0) && (THTJB.lineArray[17] != 0)) {
-            THTJB.squareArray[7] = 1;
+            THTJB.squareArray[7] = colourUpdate;
             var fillSquare = _game.add.sprite(340, 120, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 7;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
         if ((THTJB.lineArray[25] != 0) && (THTJB.lineArray[26] != 0) && (THTJB.lineArray[30] != 0)) {
-            THTJB.squareArray[11] = 1;
+            THTJB.squareArray[11] = colourUpdate;
             var fillSquare = _game.add.sprite(340, 230, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 11;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 22) {
         if ((THTJB.lineArray[18] != 0) && (THTJB.lineArray[23] != 0) && (THTJB.lineArray[27] != 0)) {
-            THTJB.squareArray[8] = 1;
+            THTJB.squareArray[8] = colourUpdate;
             var fillSquare = _game.add.sprite(10, 230, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 8;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 23) {
         if ((THTJB.lineArray[18] != 0) && (THTJB.lineArray[22] != 0) && (THTJB.lineArray[27] != 0)) {
-            THTJB.squareArray[8] = 1;
+            THTJB.squareArray[8] = colourUpdate;
             var fillSquare = _game.add.sprite(10, 230, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 8;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
         if ((THTJB.lineArray[19] != 0) && (THTJB.lineArray[24] != 0) && (THTJB.lineArray[28] != 0)) {
-            THTJB.squareArray[9] = 1;
+            THTJB.squareArray[9] = colourUpdate;
             var fillSquare = _game.add.sprite(120, 230, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 9;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 24) {
         if ((THTJB.lineArray[19] != 0) && (THTJB.lineArray[23] != 0) && (THTJB.lineArray[28] != 0)) {
-            THTJB.squareArray[9] = 1;
+            THTJB.squareArray[9] = colourUpdate;
             var fillSquare = _game.add.sprite(120, 230, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 9;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
         if ((THTJB.lineArray[20] != 0) && (THTJB.lineArray[25] != 0) && (THTJB.lineArray[29] != 0)) {
-            THTJB.squareArray[10] = 1;
+            THTJB.squareArray[10] = colourUpdate;
             var fillSquare = _game.add.sprite(230, 230, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 10;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 25) {
         if ((THTJB.lineArray[20] != 0) && (THTJB.lineArray[24] != 0) && (THTJB.lineArray[29] != 0)) {
-            THTJB.squareArray[10] = 1;
+            THTJB.squareArray[10] = colourUpdate;
             var fillSquare = _game.add.sprite(230, 230, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 10;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
         if ((THTJB.lineArray[21] != 0) && (THTJB.lineArray[26] != 0) && (THTJB.lineArray[30] != 0)) {
-            THTJB.squareArray[11] = 1;
+            THTJB.squareArray[11] = colourUpdate;
             var fillSquare = _game.add.sprite(340, 230, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 11;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 26) {
         if ((THTJB.lineArray[21] != 0) && (THTJB.lineArray[25] != 0) && (THTJB.lineArray[30] != 0)) {
-            THTJB.squareArray[11] = 1;
+            THTJB.squareArray[11] = colourUpdate;
             var fillSquare = _game.add.sprite(340, 230, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 11;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 27) {
         if ((THTJB.lineArray[18] != 0) && (THTJB.lineArray[22] != 0) && (THTJB.lineArray[27] != 0)) {
-            THTJB.squareArray[8] = 1;
+            THTJB.squareArray[8] = colourUpdate;
             var fillSquare = _game.add.sprite(10, 230, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 8;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
         if ((THTJB.lineArray[31] != 0) && (THTJB.lineArray[32] != 0) && (THTJB.lineArray[36] != 0)) {
-            THTJB.squareArray[12] = 1;
+            THTJB.squareArray[12] = colourUpdate;
             var fillSquare = _game.add.sprite(10, 340, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 12;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 28) {
         if ((THTJB.lineArray[19] != 0) && (THTJB.lineArray[23] != 0) && (THTJB.lineArray[24] != 0)) {
-            THTJB.squareArray[9] = 1;
+            THTJB.squareArray[9] = colourUpdate;
             var fillSquare = _game.add.sprite(120, 230, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 9;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
         if ((THTJB.lineArray[32] != 0) && (THTJB.lineArray[33] != 0) && (THTJB.lineArray[37] != 0)) {
-            THTJB.squareArray[13] = 1;
+            THTJB.squareArray[13] = colourUpdate;
             var fillSquare = _game.add.sprite(120,340, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 13;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 29) {
         if ((THTJB.lineArray[20] != 0) && (THTJB.lineArray[24] != 0) && (THTJB.lineArray[25] != 0)) {
-            THTJB.squareArray[10] = 1;
+            THTJB.squareArray[10] = colourUpdate;
             var fillSquare = _game.add.sprite(230, 230, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 10;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
         if ((THTJB.lineArray[33] != 0) && (THTJB.lineArray[34] != 0) && (THTJB.lineArray[38] != 0)) {
-            THTJB.squareArray[14] = 1;
+            THTJB.squareArray[14] = colourUpdate;
             var fillSquare = _game.add.sprite(230, 340, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 14;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 30) {
         if ((THTJB.lineArray[21] != 0) && (THTJB.lineArray[25] != 0) && (THTJB.lineArray[26] != 0)) {
-            THTJB.squareArray[11] = 1;
+            THTJB.squareArray[11] = colourUpdate;
             var fillSquare = _game.add.sprite(340, 230, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 11;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
         if ((THTJB.lineArray[34] != 0) && (THTJB.lineArray[35] != 0) && (THTJB.lineArray[39] != 0)) {
-            THTJB.squareArray[15] = 1;
+            THTJB.squareArray[15] = colourUpdate;
             var fillSquare = _game.add.sprite(340, 340, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 15;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 31) {
         if ((THTJB.lineArray[27] != 0) && (THTJB.lineArray[32] != 0) && (THTJB.lineArray[36] != 0)) {
-            THTJB.squareArray[12] = 1;
+            THTJB.squareArray[12] = colourUpdate;
             var fillSquare = _game.add.sprite(10, 340, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 12;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 32) {
         if ((THTJB.lineArray[27] != 0) && (THTJB.lineArray[31] != 0) && (THTJB.lineArray[36] != 0)) {
-            THTJB.squareArray[12] = 1;
+            THTJB.squareArray[12] = colourUpdate;
             var fillSquare = _game.add.sprite(10, 340, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 12;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
         if ((THTJB.lineArray[28] != 0) && (THTJB.lineArray[33] != 0) && (THTJB.lineArray[37] != 0)) {
-            THTJB.squareArray[13] = 1;
+            THTJB.squareArray[13] = colourUpdate;
             var fillSquare = _game.add.sprite(120, 340, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 13;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 33) {
         if ((THTJB.lineArray[28] != 0) && (THTJB.lineArray[32] != 0) && (THTJB.lineArray[37] != 0)) {
-            THTJB.squareArray[13] = 1;
+            THTJB.squareArray[13] = colourUpdate;
             var fillSquare = _game.add.sprite(120, 340, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 13;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
         if ((THTJB.lineArray[29] != 0) && (THTJB.lineArray[34] != 0) && (THTJB.lineArray[38] != 0)) {
-            THTJB.squareArray[14] = 1;
+            THTJB.squareArray[14] = colourUpdate;
             var fillSquare = _game.add.sprite(230, 340, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 14;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 34) {
         if ((THTJB.lineArray[29] != 0) && (THTJB.lineArray[33] != 0) && (THTJB.lineArray[38] != 0)) {
-            THTJB.squareArray[14] = 1;
+            THTJB.squareArray[14] = colourUpdate;
             var fillSquare = _game.add.sprite(230, 340, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 14;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
         if ((THTJB.lineArray[30] != 0) && (THTJB.lineArray[35] != 0) && (THTJB.lineArray[39] != 0)) {
-            THTJB.squareArray[15] = 1;
+            THTJB.squareArray[15] = colourUpdate;
             var fillSquare = _game.add.sprite(340, 340, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 15;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }
     }
 
     if (linePosition == 35) {
         if ((THTJB.lineArray[30] != 0) && (THTJB.lineArray[34] != 0) && (THTJB.lineArray[39] != 0)) {
-            THTJB.squareArray[15] = 1;
+            THTJB.squareArray[15] = colourUpdate;
             var fillSquare = _game.add.sprite(340, 340, "square");
             THTJB.squareSprites.add(fillSquare);
             fillSquare.pos = 15;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
         }    }
 
     if (linePosition > 35) {
         if ((THTJB.lineArray[linePosition-5] != 0) && (THTJB.lineArray[linePosition-4] != 0) && (THTJB.lineArray[linePosition-9] != 0)) {
-            THTJB.squareArray[linePosition-24] = 1;
+            THTJB.squareArray[linePosition-24] = colourUpdate;
             var fillSquare = _game.add.sprite((linePosition-36)*110+10, 340, "square");
             THTJB.squareSprites.add(fillSquare);
-            fillSquare.pos = linePosition;
+            fillSquare.pos = linePosition-24;
             fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
             fillSquare.alpha = 1;
+            squareAdded = true;
+        }
+    }
+    if (squareAdded == true && lastMove == true) {
+        canMove();
+    } else if (squareAdded == false && lastMove == true) {
+        cantMove();
+    } else if (squareAdded == false && lastMove == false) {
+        canMove();
+    } else if (squareAdded == true && last == false) {
+        cantMove();
+    }
+    checkWin();
+}
+
+
+function checkWin() {
+    var squareCount = 0, player1tally = 0, player2tally = 0;
+    for (i=0; i<THTJB.squareArray.length; i++) {
+        if (THTJB.squareArray[i] != 0){
+            squareCount++;
         }
     }
 
-    /*if ((linePosition > 3) && (linePosition < 8)) {
-        if ((THTJB.lineArray[linePosition-4] != 0) && (THTJB.lineArray[linePosition+1] != 0) && (THTJB.lineArray[linePosition+5] != 0)) {
-            THTJB.squareArray[linePosition-4] = 1;
-            var fillSquare = _game.add.sprite(((linePosition-4) * 110 + 10), 10, "square");
-            THTJB.squareSprites.add(fillSquare);
-            fillSquare.pos = linePosition-4;
-            fillSquare.tint = THTJB.colors[THTJB.squareArray[fillSquare.pos]];
-            fillSquare.alpha = 1;
-        }
-    }*/
+    if (squareCount == 16) {
 
-    /*if (linePosition == 0) {
-        if (THTJB.lineArray[4] != 0 && THTJB.lineArray[5] != 0 && THTJB.lineArray[9] != 0) {
-            THTJB.squareArray[0] = 1;
-            var fillSquare = _game.add.sprite(10,10, "square");
-            THTJB.squareSprites.add(fillSquare);
-            fillSquare.pos = 0;
-            fillSquare.tint = THTJB.colors[THTJB.squareArray[0]];
-            fillSquare.alpha = 1;
+        for (i=0; i<THTJB.squareArray.length; i++) {
+            if (THTJB.squareArray[i] == 1) {
+                player1tally++;
+        } else if (THTJB.squareArray[i] == 2) {
+            player2tally++;
         }
-    }*/
+    }
+        // Game over
+        cantMove();
+
+        if (player1tally > player2tally) {
+            THTJB.movesText.text = 'GAME OVER: Player 1 wins';
+        } else if (player2tally > player1tally) {
+            THTJB.movesText.text = 'GAME OVER: Player 2 wins';
+        } else if (player1tally == player2tally) {
+            THTJB.movesText.text = 'GAME OVER: It\'s a draw!';
+        }
+    }
 }
-
 
 /*
     // create new sprite with 'tile.png' image
